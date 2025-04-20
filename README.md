@@ -25,7 +25,7 @@
 sudo apt update && sudo apt install -y python3 python3-pip docker.io
 1. Clone the Repository
 bash
-git clone https://github.com/yourusername/KubeSim.git
+git clone https://github.com/DarshanShivaraj77/KubeSim-1.git
 cd KubeSim
 2. Install Python Dependencies
 bash
