@@ -111,18 +111,6 @@ KubeSim/
 │   └── index.html        # Dashboard UI
 ├── screenshots/          # Documentation images
 └── README.md             # This file
-🛑 Troubleshooting
-Issue: Docker permission denied
-Fix:
 
-bash
-sudo usermod -aG docker $USER
-newgrp docker
-Issue: Port 5000 in use
-Fix:
-
-bash
-sudo lsof -i :5000
-kill <PID>
 📜 License
 MIT License
