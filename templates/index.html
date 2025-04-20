@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Cluster Simulator</title>
+    <style>
+        body { font-family: Arial; background: #f0f0f0; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 10px; }
+        .dashboard { display: flex; flex-wrap: wrap; }
+        .section { width: 100%; margin-bottom: 20px; }
+        .card { background: #eee; margin: 5px 0; padding: 10px; border-radius: 6px; }
+        .healthy { background: #d4edda; }
+        .unresponsive { background: #f8d7da; }
+        .pod { background: #d1ecf1; }
+        input, button, select { padding: 10px; margin: 5px 0; width: 100%; }
+        .form-group { margin-bottom: 15px; }
+        .stats { display: flex; justify-content: space-between; }
+        .tabs { display: flex; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; background: #ddd; cursor: pointer; border-radius: 5px 5px 0 0; }
+        .tab.active { background: #fff; border-bottom: 2px solid #007bff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .progress-bar-container { width: 100%; background-color: #e0e0e0; border-radius: 4px; }
+        .progress-bar { height: 20px; background-color: #4CAF50; border-radius: 4px; }
+        .actions { display: flex; gap: 10px; margin-top: 10px; }
+        .actions button { width: auto; padding: 5px 10px; }
+        .policy { background: #fff3cd; padding: 5px; margin: 5px 0; border-radius: 4px; }
+        .policy-allow { border-left: 4px solid green; }
+        .policy-deny { border-left: 4px solid red; }
+        .btn-danger { background-color: #dc3545; color: white; border: none; }
+        .btn-warning { background-color: #ffc107; color: black; border: none; }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Tab functionality
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabId = tab.getAttribute('data-tab');
+                    
+                    // Remove active class from all tabs and contents
+                    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    
+                    // Add active class to clicked tab and its content
+                    tab.classList.add('active');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+            
+            // Auto-click first tab to initialize
+            if (tabs.length > 0) {
+                tabs[0].click();
+            }
+        });
+    </script>
+</head>
+<body>
+<div class="container">
+    {% if username %}
+        <h2>Welcome {{ username }} | <a href="/logout">Logout</a></h2>
+        
+        <div class="tabs">
+            <div class="tab active" data-tab="dashboard-tab">Dashboard</div>
+            <div class="tab" data-tab="nodes-tab">Nodes</div>
+            <div class="tab" data-tab="pods-tab">Pods</div>
+            <div class="tab" data-tab="settings-tab">Settings</div>
+            <div class="tab" data-tab="network-tab">Network Policies</div>
+            <div class="tab" data-tab="testing-tab">Testing Tools</div>
+        </div>
+        
+        <!-- Dashboard Tab -->
+        <div id="dashboard-tab" class="tab-content active">
+            <div class="stats">
+                <div>
+                    <h3>Cluster Overview</h3>
+                    <p>Total Nodes: {{ nodes|length }}</p>
+                    <p>Total Pods: {{ pods|length }}</p>
+                    <p>Current Scheduling Algorithm: {{ current_algorithm }}</p>
+                    <p>Auto-scaling: {{ "Enabled" if auto_scaling else "Disabled" }}</p>
+                </div>
+                <div>
+                    <h3>Resource Usage</h3>
+                    {% set total_cpu = namespace(value=0) %}
+                    {% set used_cpu = namespace(value=0) %}
+                    {% for node, info in nodes.items() %}
+                        {% set total_cpu.value = total_cpu.value + info.cpu %}
+                        {% set used_cpu.value = used_cpu.value + info.used_cpu %}
+                    {% endfor %}
+                    
+                    <p>CPU Usage: {{ used_cpu.value }}/{{ total_cpu.value }} ({{ (used_cpu.value / total_cpu.value * 100)|round if total_cpu.value > 0 else 0 }}%)</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: {{ (used_cpu.value / total_cpu.value * 100) if total_cpu.value > 0 else 0 }}%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Nodes Tab -->
+        <div id="nodes-tab" class="tab-content">
+            <h3>Nodes</h3>
+            {% for node, info in nodes.items() %}
+                <div class="card {{ info.status }}">
+                    <h4>{{ node }} ({{ info.status }})</h4>
+                    <p>CPU: {{ info.used_cpu }}/{{ info.cpu }} ({{ (info.used_cpu / info.cpu * 100)|round if info.cpu > 0 else 0 }}%)</p>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: {{ (info.used_cpu / info.cpu * 100) if info.cpu > 0 else 0 }}%"></div>
+                    </div>
+                    <p>Pods: {{ info.pods|length }}</p>
+                    <p>Auto-scaled: {{ "Yes" if info.auto_scaled else "No" }}</p>
+                    <div class="actions">
+                        <form action="/simulate_node_failure" method="POST">
+                            <input type="hidden" name="node_id" value="{{ node }}">
+                            <button type="submit" class="btn-warning">Simulate Failure</button>
+                        </form>
+                        {% if info.pods|length == 0 %}
+                        <form action="/delete_node" method="POST">
+                            <input type="hidden" name="node_id" value="{{ node }}">
+                            <button type="submit" class="btn-danger">Delete Node</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+            
+            <form action="/add_node" method="POST">
+                <h4>Add Node</h4>
+                <div class="form-group">
+                    <input type="number" name="cpu" placeholder="CPU cores" required min="1">
+                </div>
+                <div class="form-group">
+                    <button type="submit">Add Node</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Pods Tab -->
+        <div id="pods-tab" class="tab-content">
+            <h3>Pods</h3>
+            {% for pod, info in pods.items() %}
+                <div class="card pod">
+                    <h4>{{ pod }}</h4>
+                    <p>Running on: {{ info.node_id }}</p>
+                    <p>CPU Allocated: {{ info.cpu }}</p>
+                    {% if pod in pod_usage %}
+                        <p>CPU Usage: {{ pod_usage[pod].cpu_usage|round(2) }}/{{ info.cpu }} ({{ (pod_usage[pod].cpu_usage / info.cpu * 100)|round }}%)</p>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: {{ (pod_usage[pod].cpu_usage / info.cpu * 100) }}%"></div>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+            
+            <form action="/launch_pod" method="POST">
+                <h4>Launch Pod</h4>
+                <div class="form-group">
+                    <input type="number" name="cpu" placeholder="CPU needed" required min="1">
+                </div>
+                <div class="form-group">
+                    <select name="node_id">
+                        <option value="">Auto-assign with {{ current_algorithm }}</option>
+                        {% for node_id, info in nodes.items() %}
+                            {% if info.status == "healthy" %}
+                                <option value="{{ node_id }}">{{ node_id }} (Available: {{ info.cpu - info.used_cpu }} CPU)</option>
+                            {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit">Launch Pod</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Settings Tab -->
+        <div id="settings-tab" class="tab-content">
+            <h3>Cluster Settings</h3>
+            
+            <div class="card">
+                <h4>Scheduling Algorithm</h4>
+                <form action="/set_scheduling_algorithm" method="POST">
+                    <div class="form-group">
+                        <select name="algorithm">
+                            <option value="first-fit" {% if current_algorithm == "first-fit" %}selected{% endif %}>First-Fit</option>
+                            <option value="best-fit" {% if current_algorithm == "best-fit" %}selected{% endif %}>Best-Fit</option>
+                            <option value="worst-fit" {% if current_algorithm == "worst-fit" %}selected{% endif %}>Worst-Fit</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit">Apply Algorithm</button>
+                    </div>
+                </form>
+            </div>
+            
+            <div class="card">
+                <h4>Auto-scaling</h4>
+                <form action="/toggle_auto_scaling" method="POST">
+                    <div class="form-group">
+                        <button type="submit">{{ "Disable Auto-scaling" if auto_scaling else "Enable Auto-scaling" }}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Network Policies Tab -->
+        <div id="network-tab" class="tab-content">
+            <h3>Network Policies</h3>
+            
+            {% for policy_id, policy in network_policies.items() %}
+                <div class="policy policy-{{ policy.policy_type }}">
+                    <p><strong>{{ policy_id }}</strong>: {{ policy.policy_type|upper }} traffic from {{ policy.source_pod }} to {{ policy.target_pod }}</p>
+                </div>
+            {% endfor %}
+            
+            <form action="/add_network_policy" method="POST">
+                <h4>Add Network Policy</h4>
+                <div class="form-group">
+                    <select name="source_pod" required>
+                        <option value="">Select Source Pod</option>
+                        {% for pod_id in pods %}
+                            <option value="{{ pod_id }}">{{ pod_id }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <select name="target_pod" required>
+                        <option value="">Select Target Pod</option>
+                        {% for pod_id in pods %}
+                            <option value="{{ pod_id }}">{{ pod_id }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <select name="policy_type" required>
+                        <option value="allow">Allow</option>
+                        <option value="deny">Deny</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <button type="submit">Add Policy</button>
+                </div>
+            </form>
+        </div>
+        
+        <!-- Testing Tools Tab -->
+        <div id="testing-tab" class="tab-content">
+            <h3>Testing Tools</h3>
+            
+            <div class="card">
+                <h4>Failure Recovery Testing</h4>
+                <p>Select a node to simulate failure:</p>
+                <form action="/simulate_node_failure" method="POST">
+                    <div class="form-group">
+                        <select name="node_id" required>
+                            {% for node_id, info in nodes.items() %}
+                                <option value="{{ node_id }}">{{ node_id }} ({{ info.status }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button type="submit">Simulate Failure</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+    {% else %}
+        <h2>Login</h2>
+        <form action="/login" method="POST">
+            <div class="form-group">
+                <input type="text" name="username" placeholder="Username" required>
+            </div>
+            <div class="form-group">
+                <input type="password" name="password" placeholder="Password" required>
+            </div>
+            <div class="form-group">
+                <button type="submit">Login</button>
+            </div>
+        </form>
+        {% if error %}
+            <p style="color:red">{{ error }}</p>
+        {% endif %}
+    {% endif %}
+</div>
+</body>
+</html>
